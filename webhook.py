@@ -1,26 +1,25 @@
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from flask import Flask, request, jsonify
 import pandas as pd
-import requests
 import os
 
 app = Flask(__name__)
 
-# Load the existing Excel sheet or create a new one
-EXCEL_FILE = "customer_responses.xlsx"
+# Google Sheets Setup
+SHEET_ID = "12Tzk2JvZpUy-vc5tic69D4eXzHSMABkVZlQrl8rzuFs"  # Replace with your Google Sheet ID
+CREDENTIALS_FILE = "credentials.json"  # Ensure this file is in your project
 
-# Function to update Excel
-def update_excel(data):
-    if os.path.exists(EXCEL_FILE):
-        df = pd.read_excel(EXCEL_FILE)
-    else:
-        df = pd.DataFrame(columns=["Customer Name", "Invoice Number", "Response", "Last Call Date"])
+# Authenticate with Google Sheets API
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+client = gspread.authorize(creds)
+sheet = client.open_by_key(SHEET_ID).sheet1  # Access first sheet
 
-    # Append new data
-    new_entry = pd.DataFrame([data])
-    df = pd.concat([df, new_entry], ignore_index=True)
-    
-    # Save back to Excel
-    df.to_excel(EXCEL_FILE, index=False)
+# Function to update Google Sheet
+def update_google_sheet(data):
+    row = [data["Customer Name"], data["Invoice Number"], data["Response"], pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')]
+    sheet.append_row(row)  # Append new data to Google Sheet
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -29,18 +28,15 @@ def webhook():
     customer_name = data.get("customer_name")
     invoice_number = data.get("invoice_number")
     response = data.get("customer_response")
-    
-    # Save data to Excel
-    update_excel({
+
+    # Save data to Google Sheets
+    update_google_sheet({
         "Customer Name": customer_name,
         "Invoice Number": invoice_number,
-        "Response": response,
-        "Last Call Date": pd.Timestamp.now()
+        "Response": response
     })
-    
+
     return jsonify({"status": "success"}), 200
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000)
-
-
+    app.run(port=5000)
